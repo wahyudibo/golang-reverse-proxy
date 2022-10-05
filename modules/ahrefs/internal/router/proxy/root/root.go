@@ -83,9 +83,10 @@ func (s *Service) TransformResponse(resp *http.Response) (err error) {
 	buf := new(bytes.Buffer)
 	closeWriter, err := enc.Writer(contentEncoding, htmlBody, buf)
 	if err != nil {
+		closeWriter()
 		return err
 	}
-	defer closeWriter()
+	closeWriter()
 
 	resp.Body = io.NopCloser(bytes.NewReader(buf.Bytes()))
 	resp.ContentLength = int64(len(buf.Bytes()))
