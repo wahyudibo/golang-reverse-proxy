@@ -1,17 +1,21 @@
 package static
 
 import (
-	// "fmt"
+	"bytes"
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 
+	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/alias"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/config"
 	"github.com/wahyudibo/golang-reverse-proxy/pkg/debugger"
+	enc "github.com/wahyudibo/golang-reverse-proxy/pkg/encoding"
 	"github.com/wahyudibo/golang-reverse-proxy/pkg/proxy"
 )
-
-const baseURL = "https://static.ahrefs.com"
 
 type Service struct {
 	Config *config.Config
@@ -19,7 +23,7 @@ type Service struct {
 }
 
 func New(cfg *config.Config) (*Service, error) {
-	url, err := url.Parse(baseURL)
+	url, err := url.Parse(alias.StaticDomain)
 	if err != nil {
 		return nil, err
 	}
@@ -43,6 +47,8 @@ func New(cfg *config.Config) (*Service, error) {
 
 	s := &Service{Config: cfg, RP: rp}
 
+	rp.Proxy.ModifyResponse = s.TransformResponse
+
 	return s, nil
 }
 
@@ -52,11 +58,47 @@ func (s *Service) Handler() func(http.ResponseWriter, *http.Request) {
 		for key := range r.Header {
 			r.Header.Set(key, r.Header.Get(key))
 		}
-		r.Header.Set("referer", strings.Replace(r.Header.Get("referer"), s.RP.ProxyHost, s.RP.OriginURL.String(), 1))
-		r.URL.Path = strings.TrimPrefix(r.URL.RequestURI(), "/ahx-static")
 
-		// fmt.Printf("EXAMPLE: %s", strings.SplitN(r.URL.RequestURI()[1:], "/", 2))
+		r.Header.Set("user-agent", s.Config.UserAgent)
+		r.Header.Set("referer", alias.RootDomain)
+
+		r.URL.Path = strings.TrimPrefix(r.URL.RequestURI(), alias.StaticDomainAlias)
 
 		s.RP.Proxy.ServeHTTP(w, r)
 	}
+}
+
+func (s *Service) TransformResponse(resp *http.Response) (err error) {
+	contentEncoding := resp.Header.Get("Content-Encoding")
+	reader, err := enc.Reader(contentEncoding, resp.Body)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		return err
+	}
+
+	body = replaceStaticSubdomain(body, s.RP.ProxyHost)
+
+	buf := new(bytes.Buffer)
+	closeWriter, err := enc.Writer(contentEncoding, body, buf)
+	if err != nil {
+		closeWriter()
+		return err
+	}
+	closeWriter()
+
+	resp.Body = io.NopCloser(bytes.NewReader(buf.Bytes()))
+	resp.ContentLength = int64(len(buf.Bytes()))
+	resp.Header.Set("Content-Length", strconv.Itoa(len(buf.Bytes())))
+
+	return nil
+}
+
+func replaceStaticSubdomain(body []byte, proxyHost string) []byte {
+	re, _ := regexp.Compile(`https:\/\/static\.ahrefs\.com`)
+	return re.ReplaceAll(body, []byte(fmt.Sprintf("%s%s", proxyHost, alias.StaticDomainAlias)))
 }

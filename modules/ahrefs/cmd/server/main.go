@@ -18,9 +18,9 @@ func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.With().Caller().Logger()
 
-	cfg := new(config.Config)
-	if err := cfg.ParseEnvVars(); err != nil {
-		log.Fatal().Err(err).Msg("failed to parse environment variable")
+	cfg, err := config.New()
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to instantiate config")
 	}
 
 	// define route handler
