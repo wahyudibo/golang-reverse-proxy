@@ -7,6 +7,6 @@ const (
 )
 
 const (
-	RootDomainAlias   = "/"
+	AppDomainAlias    = "/"
 	StaticDomainAlias = "/ahx-static"
 )

@@ -1,20 +1,29 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/cors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	cacheClient "github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/adapter/cache/redis"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/config"
-	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/router/proxy/root"
+	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/router/proxy/app"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/router/proxy/static"
+	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/worker"
+	"github.com/wahyudibo/golang-reverse-proxy/pkg/headless"
 )
 
 func main() {
+	ctx := context.Background()
+
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.With().Caller().Logger()
 
@@ -23,14 +32,25 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to instantiate config")
 	}
 
-	// define route handler
-	rootProxy, err := root.New(cfg)
+	headlessCtx, err := headless.New(ctx)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to instantiate root proxy router")
+		log.Fatal().Err(err).Msg("failed to instantiate headless browser context")
 	}
+
+	cache := cacheClient.New(cfg)
+
+	worker := worker.New(headlessCtx, cache)
+	// start all workers
+	worker.StartAll()
+
+	// define route handler
 	staticProxy, err := static.New(cfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to instantiate static proxy router")
+	}
+	appProxy, err := app.New(cfg)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to instantiate app proxy router")
 	}
 
 	r := chi.NewRouter()
@@ -42,8 +62,34 @@ func main() {
 	}))
 
 	r.HandleFunc("/ahx-static/*", staticProxy.Handler())
-	r.HandleFunc("/*", rootProxy.Handler())
+	r.HandleFunc("/*", appProxy.Handler())
 
-	port := fmt.Sprintf(":%d", cfg.ServerPort)
-	log.Fatal().Err(http.ListenAndServe(port, r)).Msg("failed to start server")
+	server := &http.Server{
+		Addr:    fmt.Sprintf("0.0.0.0:%d", cfg.ProxyServerPort),
+		Handler: r,
+	}
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal().Err(err).Msg("failed to start server")
+		}
+	}()
+
+	log.Info().Msgf("server started on port: %d", cfg.ProxyServerPort)
+
+	<-stop
+	log.Info().Msg("Receiving stop signal. Stopping server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.ProxyServerShutdownTimeout)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Fatal().Msg("failed to shutdown server")
+	}
+	log.Info().Msg("server stopped")
+
+	worker.StopAll()
 }

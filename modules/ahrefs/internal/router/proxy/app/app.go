@@ -1,4 +1,4 @@
-package root
+package app
 
 import (
 	"bytes"
@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-redis/redis/v9"
+	cacheClient "github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/adapter/cache/redis"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/alias"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/config"
 	"github.com/wahyudibo/golang-reverse-proxy/pkg/debugger"
@@ -19,21 +21,24 @@ import (
 
 type Service struct {
 	Config *config.Config
+	Cache  *redis.Client
 	RP     *proxy.ReverseProxy
 }
 
 func New(cfg *config.Config) (*Service, error) {
-	url, err := url.Parse(alias.RootDomain)
+	cache := cacheClient.New(cfg)
+
+	url, err := url.Parse(alias.AppDomain)
 	if err != nil {
 		return nil, err
 	}
 
-	rp, err := proxy.New(cfg.ServerAddress, url.String())
+	rp, err := proxy.New(cfg.ProxyServerAddress, url.String())
 	if err != nil {
 		return nil, err
 	}
 
-	if cfg.DebugMode {
+	if cfg.ProxyDebugMode {
 		rp.Proxy.Transport = debugger.DebugTransport{}
 	}
 
@@ -45,7 +50,7 @@ func New(cfg *config.Config) (*Service, error) {
 		req.URL.Scheme = "https"
 	}
 
-	s := &Service{Config: cfg, RP: rp}
+	s := &Service{Config: cfg, Cache: cache, RP: rp}
 
 	rp.Proxy.ModifyResponse = s.TransformResponse
 
@@ -59,7 +64,8 @@ func (s *Service) Handler() func(http.ResponseWriter, *http.Request) {
 			r.Header.Set(key, r.Header.Get(key))
 		}
 
-		r.Header.Set("user-agent", s.Config.UserAgent)
+		r.Header.Set("user-agent", s.Config.ProxyUserAgent)
+		r.Header.Set("origin", s.RP.OriginURL.Host)
 		r.Header.Set("referer", strings.Replace(r.Header.Get("referer"), s.RP.ProxyHost, s.RP.OriginURL.String(), 1))
 
 		s.RP.Proxy.ServeHTTP(w, r)
@@ -79,6 +85,7 @@ func (s *Service) TransformResponse(resp *http.Response) (err error) {
 		return err
 	}
 
+	body = replaceAppSubdomain(body, s.RP.ProxyHost)
 	body = replaceStaticSubdomain(body, s.RP.ProxyHost)
 
 	buf := new(bytes.Buffer)
@@ -94,6 +101,11 @@ func (s *Service) TransformResponse(resp *http.Response) (err error) {
 	resp.Header.Set("Content-Length", strconv.Itoa(len(buf.Bytes())))
 
 	return nil
+}
+
+func replaceAppSubdomain(body []byte, proxyHost string) []byte {
+	re, _ := regexp.Compile(`https:\/\/app\.ahrefs\.com`)
+	return re.ReplaceAll(body, []byte(fmt.Sprintf("%s%s", proxyHost, alias.AppDomainAlias)))
 }
 
 func replaceStaticSubdomain(htmlBody []byte, proxyHost string) []byte {

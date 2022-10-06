@@ -28,12 +28,12 @@ func New(cfg *config.Config) (*Service, error) {
 		return nil, err
 	}
 
-	rp, err := proxy.New(cfg.ServerAddress, url.String())
+	rp, err := proxy.New(cfg.ProxyServerAddress, url.String())
 	if err != nil {
 		return nil, err
 	}
 
-	if cfg.DebugMode {
+	if cfg.ProxyDebugMode {
 		rp.Proxy.Transport = debugger.DebugTransport{}
 	}
 
@@ -59,7 +59,7 @@ func (s *Service) Handler() func(http.ResponseWriter, *http.Request) {
 			r.Header.Set(key, r.Header.Get(key))
 		}
 
-		r.Header.Set("user-agent", s.Config.UserAgent)
+		r.Header.Set("user-agent", s.Config.ProxyUserAgent)
 		r.Header.Set("referer", alias.RootDomain)
 
 		r.URL.Path = strings.TrimPrefix(r.URL.RequestURI(), alias.StaticDomainAlias)
