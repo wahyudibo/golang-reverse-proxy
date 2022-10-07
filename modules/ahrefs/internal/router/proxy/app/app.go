@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/go-redis/redis/v9"
-	cacheClient "github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/adapter/cache/redis"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/alias"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/config"
 	"github.com/wahyudibo/golang-reverse-proxy/pkg/debugger"
@@ -25,9 +24,7 @@ type Service struct {
 	RP     *proxy.ReverseProxy
 }
 
-func New(cfg *config.Config) (*Service, error) {
-	cache := cacheClient.New(cfg)
-
+func New(cfg *config.Config, cache *redis.Client) (*Service, error) {
 	url, err := url.Parse(alias.AppDomain)
 	if err != nil {
 		return nil, err

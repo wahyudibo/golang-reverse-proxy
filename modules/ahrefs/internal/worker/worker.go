@@ -1,9 +1,9 @@
 package worker
 
 import (
-	"context"
-
 	"github.com/go-redis/redis/v9"
+	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/config"
+	"github.com/wahyudibo/golang-reverse-proxy/pkg/headless"
 )
 
 // Worker defines methods that standard worker should have
@@ -12,18 +12,20 @@ type Worker interface {
 	Stop()
 }
 
-func New(headlessCtx context.Context, cache *redis.Client) *Manager {
+func New(cfg *config.Config, headlessBrowser *headless.HeadlessBrowser, cache *redis.Client) *Manager {
 	return &Manager{
-		HeadlessCtx: headlessCtx,
-		Cache:       cache,
+		Config:          cfg,
+		Cache:           cache,
+		HeadlessBrowser: headlessBrowser,
 	}
 }
 
 // Manager manages and passes shared properties to all workers
 type Manager struct {
-	Cache       *redis.Client
-	HeadlessCtx context.Context
-	workers     []Worker
+	Config          *config.Config
+	Cache           *redis.Client
+	HeadlessBrowser *headless.HeadlessBrowser
+	workers         []Worker
 }
 
 func (manager *Manager) add(workers ...Worker) {
@@ -32,10 +34,11 @@ func (manager *Manager) add(workers ...Worker) {
 
 func (manager *Manager) register() {
 	loginWorker := &loginWorker{
-		Name:        "LOGIN",
-		Cache:       manager.Cache,
-		HeadlessCtx: manager.HeadlessCtx,
-		StopCh:      make(chan bool),
+		Name:            "LOGIN",
+		Config:          manager.Config,
+		Cache:           manager.Cache,
+		HeadlessBrowser: manager.HeadlessBrowser,
+		StopCh:          make(chan bool),
 	}
 
 	manager.add(loginWorker)

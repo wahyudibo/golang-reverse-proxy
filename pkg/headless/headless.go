@@ -9,7 +9,12 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func New(ctx context.Context) (context.Context, error) {
+type HeadlessBrowser struct {
+	Context     context.Context
+	CancelFuncs []context.CancelFunc
+}
+
+func New(ctx context.Context) (*HeadlessBrowser, error) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.DisableGPU,
 		chromedp.NoSandbox,
@@ -29,15 +34,24 @@ func New(ctx context.Context) (context.Context, error) {
 	}
 
 	allocCtx, allocCtxCancel := chromedp.NewExecAllocator(ctx, opts...)
-	defer allocCtxCancel()
-
 	taskCtx, taskCtxCancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(log.Printf))
-	defer taskCtxCancel()
 
 	// ensure that the browser process is started
 	if err := chromedp.Run(taskCtx); err != nil {
 		return nil, err
 	}
 
-	return taskCtx, nil
+	return &HeadlessBrowser{
+		Context: taskCtx,
+		CancelFuncs: []context.CancelFunc{
+			taskCtxCancel,
+			allocCtxCancel,
+		},
+	}, nil
+}
+
+func (h *HeadlessBrowser) Close() {
+	for _, cancel := range h.CancelFuncs {
+		cancel()
+	}
 }

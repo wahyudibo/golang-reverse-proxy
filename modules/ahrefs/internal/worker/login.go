@@ -2,6 +2,8 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -9,18 +11,21 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/go-redis/redis/v9"
 	"github.com/rs/zerolog/log"
+
+	redisClient "github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/adapter/cache/redis"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/config"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/headless/task"
+	"github.com/wahyudibo/golang-reverse-proxy/pkg/headless"
 )
 
 var _ Worker = (*loginWorker)(nil)
 
 type loginWorker struct {
-	Name        string
-	Config      *config.Config
-	Cache       *redis.Client
-	HeadlessCtx context.Context
-	StopCh      chan bool
+	Name            string
+	Config          *config.Config
+	Cache           *redis.Client
+	HeadlessBrowser *headless.HeadlessBrowser
+	StopCh          chan bool
 }
 
 func nextInterval(min, max time.Duration) time.Duration {
@@ -51,19 +56,28 @@ func (w *loginWorker) Start() {
 			ticker.Stop()
 			ticker = time.NewTicker(nextInterval(min, max))
 
-			timeoutCtx, timeoutCtxCancel := context.WithTimeout(w.HeadlessCtx, 2*time.Second)
-			defer timeoutCtxCancel()
+			var requireLogin bool
 
-			if err := chromedp.Run(timeoutCtx, task.Ping()); err != nil {
-				log.Error().Err(err).Msgf("[WORKER: %s] failed to run task.Ping()", w.Name)
+			pingCtx, pingCtxCancel := context.WithTimeout(w.HeadlessBrowser.Context, 2*time.Second)
+			defer pingCtxCancel()
 
-				loginTimeoutCtx, loginTimeoutCtxCancel := context.WithTimeout(w.HeadlessCtx, 5*time.Second)
-				defer loginTimeoutCtxCancel()
+			if err := chromedp.Run(pingCtx, task.Ping()); err != nil {
+				log.Error().Err(err).Msgf("[WORKER: %s] failed to run task.Ping(). Might required re-login", w.Name)
 
-				var cookies []*network.Cookie
-				if err := chromedp.Run(loginTimeoutCtx, task.Login(w.Config.AccountUsername, w.Config.AccountPassword, cookies)); err != nil {
+				requireLogin = true
+			}
+
+			if requireLogin {
+				cookies := make([]*network.Cookie, 0)
+				if err := chromedp.Run(w.HeadlessBrowser.Context, task.Login(w.Config.AccountUsername, w.Config.AccountPassword, &cookies)); err != nil {
 					log.Error().Err(err).Msgf("[WORKER: %s] failed to run task.Login()", w.Name)
 				}
+
+				cookiesJSON, err := json.Marshal(cookies)
+				if err != nil {
+					log.Error().Err(err).Msgf("[WORKER: %s] failed to marshal cookies to JSON", w.Name)
+				}
+				w.Cache.Set(context.Background(), fmt.Sprintf("%s:cookies", redisClient.Prefix), string(cookiesJSON), 0)
 			}
 		}
 	}

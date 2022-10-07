@@ -32,23 +32,28 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to instantiate config")
 	}
 
-	headlessCtx, err := headless.New(ctx)
+	headlessBrowser, err := headless.New(ctx)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to instantiate headless browser context")
 	}
+	defer headlessBrowser.Close()
 
-	cache := cacheClient.New(cfg)
+	cache, err := cacheClient.New(ctx, cfg)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to instantiate cache")
+	}
 
-	worker := worker.New(headlessCtx, cache)
+	worker := worker.New(cfg, headlessBrowser, cache)
 	// start all workers
 	worker.StartAll()
+	defer worker.StopAll()
 
 	// define route handler
 	staticProxy, err := static.New(cfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to instantiate static proxy router")
 	}
-	appProxy, err := app.New(cfg)
+	appProxy, err := app.New(cfg, cache)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to instantiate app proxy router")
 	}
@@ -90,6 +95,4 @@ func main() {
 		log.Fatal().Msg("failed to shutdown server")
 	}
 	log.Info().Msg("server stopped")
-
-	worker.StopAll()
 }
