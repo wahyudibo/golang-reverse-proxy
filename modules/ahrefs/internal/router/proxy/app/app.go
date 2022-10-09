@@ -91,10 +91,15 @@ func (s *Service) Handler() func(http.ResponseWriter, *http.Request) {
 
 		r.Header.Set("user-agent", s.Config.ProxyUserAgent)
 		r.Header.Set("origin", s.RP.OriginURL.Host)
-		r.Header.Set("referer", strings.Replace(r.Header.Get("referer"), s.RP.ProxyHost, s.RP.OriginURL.String(), 1))
+
+		if r.Header.Get("referer") == "" {
+			r.Header.Set("referer", s.RP.OriginURL.String())
+		} else {
+			r.Header.Set("referer", strings.Replace(r.Header.Get("referer"), s.RP.ProxyHost, s.RP.OriginURL.String(), 1))
+		}
 
 		for _, c := range networkCookies {
-			cookie := headless.TransformNetworkCookieToHTTPCookieSameSite(c)
+			cookie := headless.TransformNetworkCookieToHTTPCookie(c)
 			r.AddCookie(cookie)
 		}
 
@@ -103,6 +108,14 @@ func (s *Service) Handler() func(http.ResponseWriter, *http.Request) {
 }
 
 func (s *Service) TransformResponse(resp *http.Response) (err error) {
+	if resp.Header.Get("Location") != "" {
+		resp.Header.Set("Location", strings.Replace(
+			resp.Header.Get("Location"),
+			fmt.Sprintf("//%s", s.RP.OriginURL.Host),
+			s.RP.ProxyHost, 1,
+		))
+	}
+
 	contentEncoding := resp.Header.Get("Content-Encoding")
 	reader, err := enc.Reader(contentEncoding, resp.Body)
 	if err != nil {

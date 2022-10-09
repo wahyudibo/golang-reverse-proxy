@@ -8,7 +8,8 @@ import (
 
 // Config stores server configuration. Config value can be taken from environment variables or hardcoded.
 type Config struct {
-	ProxyServerPort            int    `env:"PROXY_SERVER_PORT" envDefault:"false"`
+	ProxyServerHost            string `env:"PROXY_SERVER_HOST"`
+	ProxyServerPort            int    `env:"PROXY_SERVER_PORT"`
 	ProxyServerAddress         string `env:"PROXY_SERVER_ADDRESS"`
 	ProxyUserAgent             string `env:"PROXY_USER_AGENT"`
 	AccountUsername            string `env:"AHREFS_ACCOUNT_USERNAME"`

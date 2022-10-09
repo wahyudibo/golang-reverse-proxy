@@ -18,6 +18,7 @@ func New(ctx context.Context) (*HeadlessBrowser, error) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.DisableGPU,
 		chromedp.NoSandbox,
+		chromedp.Flag("user-agent", os.Getenv("PROXY_USER_AGENT")),
 	)
 
 	isHeadless, err := strconv.ParseBool(os.Getenv("HEADLESS_BROWSER_HEADLESS_MODE"))

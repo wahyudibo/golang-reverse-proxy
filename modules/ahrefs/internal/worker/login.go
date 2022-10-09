@@ -7,11 +7,12 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/go-redis/redis/v9"
 	"github.com/rs/zerolog/log"
-
 	redisClient "github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/adapter/cache/redis"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/config"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/headless/task"
@@ -58,7 +59,7 @@ func (w *loginWorker) Start() {
 
 			var requireLogin bool
 
-			pingCtx, pingCtxCancel := context.WithTimeout(w.HeadlessBrowser.Context, 2*time.Second)
+			pingCtx, pingCtxCancel := context.WithTimeout(w.HeadlessBrowser.Context, 5*time.Second)
 			defer pingCtxCancel()
 
 			if err := chromedp.Run(pingCtx, task.Ping()); err != nil {
@@ -69,7 +70,10 @@ func (w *loginWorker) Start() {
 
 			if requireLogin {
 				cookies := make([]*network.Cookie, 0)
-				if err := chromedp.Run(w.HeadlessBrowser.Context, task.Login(w.Config.AccountUsername, w.Config.AccountPassword, &cookies)); err != nil {
+				loginCtx, loginCtxCancel := chromedp.NewContext(w.HeadlessBrowser.Context)
+				defer loginCtxCancel()
+
+				if err := chromedp.Run(loginCtx, task.Login(w.Config.AccountUsername, w.Config.AccountPassword, &cookies)); err != nil {
 					log.Error().Err(err).Msgf("[WORKER: %s] failed to run task.Login()", w.Name)
 				}
 
@@ -78,12 +82,19 @@ func (w *loginWorker) Start() {
 					log.Error().Err(err).Msgf("[WORKER: %s] failed to marshal cookies to JSON", w.Name)
 				}
 				w.Cache.Set(context.Background(), fmt.Sprintf("%s:cookies", redisClient.Prefix), string(cookiesJSON), 0)
+
+				// wait 2 seconds before closing login tab
+				time.Sleep(2 * time.Second)
+				if err := page.Close().Do(cdp.WithExecutor(loginCtx, chromedp.FromContext(loginCtx).Target)); err != nil {
+					log.Error().Err(err).Msgf("[WORKER: %s] failed to close login tab", w.Name)
+				}
 			}
 		}
 	}
 }
 
 func (w *loginWorker) Stop() {
+	w.HeadlessBrowser.Close()
 	close(w.StopCh)
 	log.Info().Msgf("[WORKER: %s] stopped", w.Name)
 }

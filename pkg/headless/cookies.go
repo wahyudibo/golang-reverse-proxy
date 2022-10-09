@@ -13,7 +13,7 @@ var networkCookieToHTTPCookieSameSite = map[string]http.SameSite{
 	"None":   http.SameSiteNoneMode,
 }
 
-func TransformNetworkCookieToHTTPCookieSameSite(c *network.Cookie) *http.Cookie {
+func TransformNetworkCookieToHTTPCookie(c *network.Cookie) *http.Cookie {
 	return &http.Cookie{
 		Name:     c.Name,
 		Value:    c.Value,
