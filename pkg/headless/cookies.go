@@ -13,21 +13,15 @@ var networkCookieToHTTPCookieSameSite = map[string]http.SameSite{
 	"None":   http.SameSiteNoneMode,
 }
 
-func TransformNetworkCookieToHTTPCookieSameSite(networkCookies []*network.Cookie) []http.Cookie {
-	httpCookies := make([]http.Cookie, 0)
-
-	for _, c := range networkCookies {
-		httpCookies = append(httpCookies, http.Cookie{
-			Name:     c.Name,
-			Value:    c.Value,
-			Path:     c.Path,
-			Domain:   c.Domain,
-			Expires:  time.Unix(int64(c.Expires), 0),
-			Secure:   c.Secure,
-			HttpOnly: c.HTTPOnly,
-			SameSite: networkCookieToHTTPCookieSameSite[c.SameSite.String()],
-		})
+func TransformNetworkCookieToHTTPCookieSameSite(c *network.Cookie) *http.Cookie {
+	return &http.Cookie{
+		Name:     c.Name,
+		Value:    c.Value,
+		Path:     c.Path,
+		Domain:   c.Domain,
+		Expires:  time.Unix(int64(c.Expires), 0),
+		Secure:   c.Secure,
+		HttpOnly: c.HTTPOnly,
+		SameSite: networkCookieToHTTPCookieSameSite[c.SameSite.String()],
 	}
-
-	return httpCookies
 }

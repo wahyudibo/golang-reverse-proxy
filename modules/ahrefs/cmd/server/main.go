@@ -53,7 +53,7 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to instantiate static proxy router")
 	}
-	appProxy, err := app.New(cfg, cache)
+	appProxy, err := app.New(ctx, cfg, cache)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to instantiate app proxy router")
 	}

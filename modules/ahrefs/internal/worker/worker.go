@@ -34,7 +34,7 @@ func (manager *Manager) add(workers ...Worker) {
 
 func (manager *Manager) register() {
 	loginWorker := &loginWorker{
-		Name:            "LOGIN",
+		Name:            "AHX:LOGIN",
 		Config:          manager.Config,
 		Cache:           manager.Cache,
 		HeadlessBrowser: manager.HeadlessBrowser,

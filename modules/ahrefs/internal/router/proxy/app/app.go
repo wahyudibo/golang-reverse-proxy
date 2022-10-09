@@ -2,6 +2,8 @@ package app
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,21 +12,26 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/chromedp/cdproto/network"
 	"github.com/go-redis/redis/v9"
+	"github.com/rs/zerolog/log"
+	redisClient "github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/adapter/cache/redis"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/alias"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/config"
 	"github.com/wahyudibo/golang-reverse-proxy/pkg/debugger"
 	enc "github.com/wahyudibo/golang-reverse-proxy/pkg/encoding"
+	"github.com/wahyudibo/golang-reverse-proxy/pkg/headless"
 	"github.com/wahyudibo/golang-reverse-proxy/pkg/proxy"
 )
 
 type Service struct {
-	Config *config.Config
-	Cache  *redis.Client
-	RP     *proxy.ReverseProxy
+	Context context.Context
+	Config  *config.Config
+	Cache   *redis.Client
+	RP      *proxy.ReverseProxy
 }
 
-func New(cfg *config.Config, cache *redis.Client) (*Service, error) {
+func New(ctx context.Context, cfg *config.Config, cache *redis.Client) (*Service, error) {
 	url, err := url.Parse(alias.AppDomain)
 	if err != nil {
 		return nil, err
@@ -47,7 +54,7 @@ func New(cfg *config.Config, cache *redis.Client) (*Service, error) {
 		req.URL.Scheme = "https"
 	}
 
-	s := &Service{Config: cfg, Cache: cache, RP: rp}
+	s := &Service{Context: ctx, Config: cfg, Cache: cache, RP: rp}
 
 	rp.Proxy.ModifyResponse = s.TransformResponse
 
@@ -57,6 +64,27 @@ func New(cfg *config.Config, cache *redis.Client) (*Service, error) {
 // Handler handles the http request using proxy.
 func (s *Service) Handler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// check if cookies already exists in cache
+		cookiesKey := fmt.Sprintf("%s:cookies", redisClient.Prefix)
+		cookiesJSON, err := s.Cache.Get(s.Context, cookiesKey).Result()
+		if err != nil {
+			log.Error().Err(err).Msg("failed to get cookies from cache")
+
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 - Something bad happened!"))
+			return
+		}
+
+		networkCookies := make([]*network.Cookie, 0)
+		err = json.Unmarshal([]byte(cookiesJSON), &networkCookies)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to unmarshal cookies from cache")
+
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 - Something bad happened!"))
+			return
+		}
+
 		for key := range r.Header {
 			r.Header.Set(key, r.Header.Get(key))
 		}
@@ -64,6 +92,11 @@ func (s *Service) Handler() func(http.ResponseWriter, *http.Request) {
 		r.Header.Set("user-agent", s.Config.ProxyUserAgent)
 		r.Header.Set("origin", s.RP.OriginURL.Host)
 		r.Header.Set("referer", strings.Replace(r.Header.Get("referer"), s.RP.ProxyHost, s.RP.OriginURL.String(), 1))
+
+		for _, c := range networkCookies {
+			cookie := headless.TransformNetworkCookieToHTTPCookieSameSite(c)
+			r.AddCookie(cookie)
+		}
 
 		s.RP.Proxy.ServeHTTP(w, r)
 	}

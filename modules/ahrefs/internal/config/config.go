@@ -11,17 +11,17 @@ type Config struct {
 	ProxyServerPort            int    `env:"PROXY_SERVER_PORT" envDefault:"false"`
 	ProxyServerAddress         string `env:"PROXY_SERVER_ADDRESS"`
 	ProxyUserAgent             string `env:"PROXY_USER_AGENT"`
-	ProxyServerShutdownTimeout time.Duration
 	AccountUsername            string `env:"AHREFS_ACCOUNT_USERNAME"`
 	AccountPassword            string `env:"AHREFS_ACCOUNT_PASSWORD"`
 	CacheRedisAddress          string `env:"CACHE_REDIS_ADDRESS"`
 	CacheRedisPassword         string `env:"CACHE_REDIS_PASSWORD"`
 	ProxyDebugMode             bool   `env:"PROXY_DEBUG_MODE" envDefault:"false"`
+	ProxyServerShutdownTimeout time.Duration
 }
 
 func New() (*Config, error) {
 	cfg := &Config{
-		ProxyServerShutdownTimeout: 5*time.Second,
+		ProxyServerShutdownTimeout: 5 * time.Second,
 	}
 	if err := cfg.ParseEnvVars(); err != nil {
 		return nil, err
