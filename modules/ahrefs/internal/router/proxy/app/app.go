@@ -16,8 +16,9 @@ import (
 	"github.com/go-redis/redis/v9"
 	"github.com/rs/zerolog/log"
 	redisClient "github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/adapter/cache/redis"
-	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/alias"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/config"
+	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/constant"
+	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/repository"
 	"github.com/wahyudibo/golang-reverse-proxy/pkg/debugger"
 	enc "github.com/wahyudibo/golang-reverse-proxy/pkg/encoding"
 	"github.com/wahyudibo/golang-reverse-proxy/pkg/headless"
@@ -25,14 +26,15 @@ import (
 )
 
 type Service struct {
-	Context context.Context
-	Config  *config.Config
-	Cache   *redis.Client
-	RP      *proxy.ReverseProxy
+	Context    context.Context
+	Config     *config.Config
+	Repository repository.Repository
+	Cache      *redis.Client
+	RP         *proxy.ReverseProxy
 }
 
-func New(ctx context.Context, cfg *config.Config, cache *redis.Client) (*Service, error) {
-	url, err := url.Parse(alias.AppDomain)
+func New(ctx context.Context, cfg *config.Config, repo repository.Repository, cache *redis.Client) (*Service, error) {
+	url, err := url.Parse(constant.AppDomain)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +56,7 @@ func New(ctx context.Context, cfg *config.Config, cache *redis.Client) (*Service
 		req.URL.Scheme = "https"
 	}
 
-	s := &Service{Context: ctx, Config: cfg, Cache: cache, RP: rp}
+	s := &Service{Context: ctx, Config: cfg, Repository: repo, Cache: cache, RP: rp}
 
 	rp.Proxy.ModifyResponse = s.TransformResponse
 
@@ -65,7 +67,7 @@ func New(ctx context.Context, cfg *config.Config, cache *redis.Client) (*Service
 func (s *Service) Handler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// check if cookies already exists in cache
-		cookiesKey := fmt.Sprintf("%s:cookies", redisClient.Prefix)
+		cookiesKey := fmt.Sprintf("%s:cookies", redisClient.KeyPrefix)
 		cookiesJSON, err := s.Cache.Get(s.Context, cookiesKey).Result()
 		if err != nil {
 			log.Error().Err(err).Msg("failed to get cookies from cache")
@@ -112,7 +114,8 @@ func (s *Service) TransformResponse(resp *http.Response) (err error) {
 		resp.Header.Set("Location", strings.Replace(
 			resp.Header.Get("Location"),
 			fmt.Sprintf("//%s", s.RP.OriginURL.Host),
-			s.RP.ProxyHost, 1,
+			s.RP.ProxyHost,
+			1,
 		))
 	}
 
@@ -148,10 +151,10 @@ func (s *Service) TransformResponse(resp *http.Response) (err error) {
 
 func replaceAppSubdomain(body []byte, proxyHost string) []byte {
 	re, _ := regexp.Compile(`https:\/\/app\.ahrefs\.com`)
-	return re.ReplaceAll(body, []byte(fmt.Sprintf("%s%s", proxyHost, alias.AppDomainAlias)))
+	return re.ReplaceAll(body, []byte(fmt.Sprintf("%s%s", proxyHost, constant.AppDomainAlias)))
 }
 
 func replaceStaticSubdomain(htmlBody []byte, proxyHost string) []byte {
 	re, _ := regexp.Compile(`https:\/\/static\.ahrefs\.com`)
-	return re.ReplaceAll(htmlBody, []byte(fmt.Sprintf("%s%s", proxyHost, alias.StaticDomainAlias)))
+	return re.ReplaceAll(htmlBody, []byte(fmt.Sprintf("%s%s", proxyHost, constant.StaticDomainAlias)))
 }

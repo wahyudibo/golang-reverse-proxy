@@ -13,11 +13,14 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	cacheClient "github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/adapter/cache/redis"
+	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/adapter/db/mysql"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/config"
+	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/router"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/router/proxy/app"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/router/proxy/static"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/worker"
+	cacheClient "github.com/wahyudibo/golang-reverse-proxy/pkg/adapter/cache/redis"
+	dbClient "github.com/wahyudibo/golang-reverse-proxy/pkg/adapter/db/mysql"
 	"github.com/wahyudibo/golang-reverse-proxy/pkg/headless"
 )
 
@@ -38,7 +41,23 @@ func main() {
 	}
 	defer headlessBrowser.Close()
 
-	cache, err := cacheClient.New(ctx, cfg)
+	db, err := dbClient.New(ctx, &dbClient.Config{
+		DBMySQLHost:     cfg.DBMySQLHost,
+		DBMySQLPort:     cfg.DBMySQLPort,
+		DBMySQLUser:     cfg.DBMySQLUser,
+		DBMySQLPassword: cfg.DBMySQLPassword,
+		DBMySQLDatabase: cfg.DBMySQLDatabase,
+	})
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to instantiate database")
+	}
+
+	repo := dbmysql.New(db)
+
+	cache, err := cacheClient.New(ctx, &cacheClient.Config{
+		Address:  cfg.CacheRedisAddress,
+		Password: cfg.CacheRedisPassword,
+	})
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to instantiate cache")
 	}
@@ -49,11 +68,13 @@ func main() {
 	defer worker.StopAll()
 
 	// define route handler
+	usageLimitRouteHandler := router.NewUsageLimitRouteHandler(repo)
+
 	staticProxy, err := static.New(cfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to instantiate static proxy router")
 	}
-	appProxy, err := app.New(ctx, cfg, cache)
+	appProxy, err := app.New(ctx, cfg, repo, cache)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to instantiate app proxy router")
 	}
@@ -66,6 +87,7 @@ func main() {
 		AllowedOrigins: []string{"*"},
 	}))
 
+	r.HandleFunc("/usage-limit", usageLimitRouteHandler.GetUsageLimit)
 	r.HandleFunc("/ahx-static/*", staticProxy.Handler())
 	r.HandleFunc("/*", appProxy.Handler())
 

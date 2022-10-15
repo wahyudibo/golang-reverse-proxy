@@ -12,12 +12,20 @@ type Config struct {
 	ProxyServerPort            int    `env:"PROXY_SERVER_PORT"`
 	ProxyServerAddress         string `env:"PROXY_SERVER_ADDRESS"`
 	ProxyUserAgent             string `env:"PROXY_USER_AGENT"`
-	AccountUsername            string `env:"AHREFS_ACCOUNT_USERNAME"`
-	AccountPassword            string `env:"AHREFS_ACCOUNT_PASSWORD"`
-	CacheRedisAddress          string `env:"CACHE_REDIS_ADDRESS"`
-	CacheRedisPassword         string `env:"CACHE_REDIS_PASSWORD"`
 	ProxyDebugMode             bool   `env:"PROXY_DEBUG_MODE" envDefault:"false"`
 	ProxyServerShutdownTimeout time.Duration
+
+	AccountUsername string `env:"AHREFS_ACCOUNT_USERNAME"`
+	AccountPassword string `env:"AHREFS_ACCOUNT_PASSWORD"`
+
+	CacheRedisAddress  string `env:"CACHE_REDIS_ADDRESS"`
+	CacheRedisPassword string `env:"CACHE_REDIS_PASSWORD"`
+
+	DBMySQLHost     string `env:"DB_MYSQL_HOST"`
+	DBMySQLPort     int    `env:"DB_MYSQL_PORT"`
+	DBMySQLUser     string `env:"DB_MYSQL_USER"`
+	DBMySQLPassword string `env:"DB_MYSQL_PASSWORD"`
+	DBMySQLDatabase string `env:"DB_MYSQL_DATABASE"`
 }
 
 func New() (*Config, error) {

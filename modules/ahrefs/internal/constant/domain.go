@@ -1,4 +1,4 @@
-package alias
+package constant
 
 const (
 	RootDomain   = "https://ahrefs.com"

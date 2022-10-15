@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/alias"
 	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/config"
+	"github.com/wahyudibo/golang-reverse-proxy/modules/ahrefs/internal/constant"
 	"github.com/wahyudibo/golang-reverse-proxy/pkg/debugger"
 	enc "github.com/wahyudibo/golang-reverse-proxy/pkg/encoding"
 	"github.com/wahyudibo/golang-reverse-proxy/pkg/proxy"
@@ -23,7 +23,7 @@ type Service struct {
 }
 
 func New(cfg *config.Config) (*Service, error) {
-	url, err := url.Parse(alias.StaticDomain)
+	url, err := url.Parse(constant.StaticDomain)
 	if err != nil {
 		return nil, err
 	}
@@ -60,9 +60,9 @@ func (s *Service) Handler() func(http.ResponseWriter, *http.Request) {
 		}
 
 		r.Header.Set("user-agent", s.Config.ProxyUserAgent)
-		r.Header.Set("referer", alias.RootDomain)
+		r.Header.Set("referer", constant.AppDomain)
 
-		r.URL.Path = strings.TrimPrefix(r.URL.RequestURI(), alias.StaticDomainAlias)
+		r.URL.Path = strings.TrimPrefix(r.URL.RequestURI(), constant.StaticDomainAlias)
 
 		s.RP.Proxy.ServeHTTP(w, r)
 	}
@@ -100,5 +100,5 @@ func (s *Service) TransformResponse(resp *http.Response) (err error) {
 
 func replaceStaticSubdomain(body []byte, proxyHost string) []byte {
 	re, _ := regexp.Compile(`https:\/\/static\.ahrefs\.com`)
-	return re.ReplaceAll(body, []byte(fmt.Sprintf("%s%s", proxyHost, alias.StaticDomainAlias)))
+	return re.ReplaceAll(body, []byte(fmt.Sprintf("%s%s", proxyHost, constant.StaticDomainAlias)))
 }

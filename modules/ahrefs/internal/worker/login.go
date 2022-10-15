@@ -81,7 +81,7 @@ func (w *loginWorker) Start() {
 				if err != nil {
 					log.Error().Err(err).Msgf("[WORKER: %s] failed to marshal cookies to JSON", w.Name)
 				}
-				w.Cache.Set(context.Background(), fmt.Sprintf("%s:cookies", redisClient.Prefix), string(cookiesJSON), 0)
+				w.Cache.Set(context.Background(), fmt.Sprintf("%s:cookies", redisClient.KeyPrefix), string(cookiesJSON), 0)
 
 				// wait 2 seconds before closing login tab
 				time.Sleep(2 * time.Second)
